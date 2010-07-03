@@ -4,8 +4,6 @@ require 'mechanize'
 require 'kconv'
 require 'date'
 require 'sqlite3'
-require 'nkf'
-
 
 
 def getNOAData(year, month, day, hh)
@@ -21,53 +19,42 @@ def getNOAData(year, month, day, hh)
     f.click_button
   }
 
-
+  agent.page.encoding = "utf-8" #このタイミングとtoutf8が必要。
 
   agent.page.search('//tr[td[font[span[@name="riTime"]]]]').each do |e|
-    time = e.at('span[@name="riTime"]').inner_text.strip.split(/:/) #strip!を使うとエラー
+    time = e.at('span[@name="riTime"]').inner_text.strip.split(/:/)
     hour = time[0].to_i
     min = time[1].to_i
-    title = e.at('span[@name="riTitle"]').inner_text.strip #gsubで全角も削除対象にしたほうがいいかも
-    artist = e.at('span[@name="riArtist"]').inner_text.strip
-
-
     date = Time.mktime(year, month, day, hour, min, 9).to_i
-    p "#{date},#{title},#{artist}"
-    
-    
-    #p title = NKF::nkf( '-Sem0', title )
-    #p title = NKF::nkf( '-e', title )
-    #p title = title.kconv(Kconv::UTF8,Kconv::SJIS)
-    #p title = title.kconv(Kconv::EUC,Kconv::SJIS)
-    #p title = title.toeuc
-    #p title = NKF::nkf('-Se', title)
+    date2 = Time.at(date).to_s
+    title = e.at('span[@name="riTitle"]').inner_text.toutf8.strip #gsubで全角も削除対象にしたほうがいいかも
+    artist = e.at('span[@name="riArtist"]').inner_text.toutf8.strip
 
-    p date2 = Time.at(date).to_s #sqlに入れるときはto_s
-    
-    new_item = {:date2 => date2, :date => date, :title => title, :artist => artist}
-    sql = "insert into tbl_test values (:date2, :date, :title, :artist)"
+    new_item = {:date => date, :date2 => date2, :title => title, :artist => artist}
+    sql = "insert into NOAData values (:date, :date2, :title, :artist)"
     $db.execute(sql, new_item)
 
+    p "#{date2},#{title},#{artist}"
 
 
   end
-  
-  #db.close #この場所間違ってる
-  
+
+  #db.close #この場所間違ってる。必要ない？
+
 end
 
 
 
 
-db_name = 'test.db'
+db_name = 'radioi_NOAData.db'
 
 
 unless test(?e, db_name) then
 
 SQL=<<EOS
-create table tbl_test (
-  date2   text,
+create table NOAData (
   date    integer,
+  date2   text,
   title   text,
   artist  text
 );
@@ -75,18 +62,14 @@ EOS
 
   $db = SQLite3::Database.new(db_name)
   $db.execute(SQL)
-
 else
   $db = SQLite3::Database.new(db_name)
-
 end
 
 
 
-
-
 def bt(sd, ed)
-  df = "%Y %m/%d" #"2010 7/3" のフォーマットで
+  df = "%Y %m/%d"
   start_date = Date.strptime(sd, df)
   end_date = Date.strptime(ed, df)
   (start_date..end_date).each do |d|
@@ -94,7 +77,9 @@ def bt(sd, ed)
     month = d.month
     day = d.day
 
-    for hour in 0..23 do #隠し設定？ 時間を"0"にすると0-10時、"1"は11-20時、"3"は無し
+    #隠し設定？ 時間を"0"にすると0-10時、"1"は11-20時、"3"は無し
+    #for hour in 0..23 do
+    for hour in 13..14 do
       hour = hour.to_s
       hour = hour.length == 1 ? "0#{hour}" : hour
       getNOAData(year, month, day, hour)
@@ -103,4 +88,8 @@ def bt(sd, ed)
   end
 end
 
-bt("2010 7/4","2010 7/4") #bt(db, "2010 7/3","2010 7/4")とすると7/3 0:00～7/4 23:59まで
+
+#bt(db, "2010 7/3","2010 7/4")とすると7/3 0:00～7/4 23:59まで
+#7/3 13に日本語あり
+bt("2010 7/3","2010 7/3")
+
